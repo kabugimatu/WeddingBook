@@ -21,12 +21,15 @@ public class BotStart  {
 
     @PostConstruct  
     private void init() {
-       System.out.println("Starting wedding book bot service ..");
+      
         TelegramBotsApi telegramBotsApi = new TelegramBotsApi();
         try {
+             System.out.println("Starting WeddingBook bot service ..");
             telegramBotsApi.registerBot(new ServiceBot());
+             System.out.println("Wedding Book Bot Service started successfully ..");
+            
         } catch (TelegramApiException e) {
-            BotLogger.error("ERROR", e);
+            BotLogger.error("Error Starting WeddingBook Bot Service", e);
         }
 
     }
