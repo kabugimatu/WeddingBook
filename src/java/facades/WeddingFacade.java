@@ -33,7 +33,34 @@ public class WeddingFacade extends AbstractFacade<Wedding> {
         return em;
     }
 
-    public Wedding fetchWeddingByChatId(String chatId){
+    public Wedding fetchByAdminCode(String adminCode){
+        Wedding dbWedding = null;
+         Query query = getEntityManager().createNamedQuery("fetchByAdminCode");
+           query.setParameter("wcode", adminCode);
+           
+           if(!query.getResultList().isEmpty()){
+               dbWedding = (Wedding)query.getResultList().get(0);
+           }
+         
+           
+           return dbWedding;
+        
+    }
+    
+     public Wedding fetchWeddingByCreator(String creator){
+        Wedding dbWedding = null;
+         Query query = getEntityManager().createNamedQuery("fetchByCreator");
+           query.setParameter("creator", creator);
+           
+           if(!query.getResultList().isEmpty()){
+               dbWedding = (Wedding)query.getResultList().get(0);
+           }
+         
+           
+           return dbWedding;
+        
+    }
+    public Wedding fetchWeddingByChatId(Long chatId){
         Wedding wedding = null;
         Query query = getEntityManager().createNamedQuery("fetchByChatId");
         query.setParameter("chatid", chatId);
@@ -44,6 +71,16 @@ public class WeddingFacade extends AbstractFacade<Wedding> {
         return wedding;
     }
    
+    public Wedding fetchWeddingByTel(String tel){
+        Wedding wedding = null;
+        Query query = getEntityManager().createNamedQuery("fetchByTel");
+        query.setParameter("tel", tel);
+        
+        if(!query.getResultList().isEmpty()){
+            wedding = (Wedding)query.getResultList().get(0);
+        }
+        return wedding;
+    }
 
     public WeddingFacade() {
         super(Wedding.class);

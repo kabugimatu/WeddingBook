@@ -30,7 +30,7 @@ public class ChatFacade extends AbstractFacade<Chat> {
         super(Chat.class);
     }
     
-    public Chat fetchChatByIdAndUserId(Long cid ,int userId){
+    public Chat fetchChatByIdAndState(Long cid ,int userId){
         Chat dbChat = new Chat();
         
         try{

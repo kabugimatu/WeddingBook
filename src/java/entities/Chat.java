@@ -6,6 +6,7 @@
 package entities;
 
 import java.io.Serializable;
+import javax.persistence.Cacheable;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
@@ -18,7 +19,7 @@ import javax.persistence.NamedQuery;
  * @author zkmatu
  */
 @Entity
-
+@Cacheable(false)
 @NamedQueries({
     @NamedQuery(name="fetchChatState" ,query="SELECT c FROM Chat c WHERE c.chatId =:cid AND C.userId =:uid")
 })

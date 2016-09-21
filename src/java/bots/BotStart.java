@@ -26,7 +26,7 @@ public class BotStart  {
         try {
              System.out.println("Starting WeddingBook bot service ..");
             telegramBotsApi.registerBot(new ServiceBot());
-             System.out.println("Wedding Book Bot Service started successfully ..");
+             System.out.println("WeddingBook Bot Service started successfully ..");
             
         } catch (TelegramApiException e) {
             BotLogger.error("Error Starting WeddingBook Bot Service", e);

@@ -9,10 +9,13 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import javax.persistence.Cacheable;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
+import javax.persistence.NamedQueries;
+import javax.persistence.NamedQuery;
 import javax.persistence.OneToMany;
 import javax.persistence.Temporal;
 import javax.persistence.TemporalType;
@@ -22,6 +25,13 @@ import javax.persistence.TemporalType;
  * @author zkmatu
  */
 @Entity
+@Cacheable(false)
+@NamedQueries({
+        @NamedQuery(name = "fetchByChatId" ,query = "SELECT d FROM Wedding d WHERE d.currentChatId =:chatid"),
+     @NamedQuery(name = "fetchByTel" ,query = "SELECT d FROM Wedding d WHERE d.telNumber =:tel"),
+      @NamedQuery(name = "fetchByAdminCode" ,query = "SELECT d FROM Wedding d WHERE d.weddingCode =:wcode"),
+       @NamedQuery(name = "fetchByCreator" ,query = "SELECT d FROM Wedding d WHERE d.registeredBy =:creator")
+        })
 public class Wedding implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -31,11 +41,13 @@ public class Wedding implements Serializable {
     String coupleName;
     private String weddingCode;
     private String clientCode;
-    @Temporal(TemporalType.DATE)
-    private Date weddingDate;
+    
+    private String weddingDate;
     @Temporal(TemporalType.TIME)
     private Date churchTime;
-    private String currentChatId;
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date dateRegistered = new Date();
+    private Long currentChatId;
     private byte[] couplePhoto;
      
     private String venue;
@@ -50,9 +62,31 @@ public class Wedding implements Serializable {
      
      private String locale;
      
+     private String registeredBy;
+     
+     
     @OneToMany
     private List<BridalParty> bridalParty = new ArrayList<>();
 
+    public String getRegisteredBy() {
+        return registeredBy;
+    }
+
+    public void setRegisteredBy(String registeredBy) {
+        this.registeredBy = registeredBy;
+    }
+
+    
+    public Date getDateRegistered() {
+        return dateRegistered;
+    }
+
+    public void setDateRegistered(Date dateRegistered) {
+        this.dateRegistered = dateRegistered;
+    }
+
+    
+    
     public String getTelNumber() {
         return telNumber;
     }
@@ -68,18 +102,20 @@ public class Wedding implements Serializable {
     public void setLocale(String locale) {
         this.locale = locale;
     }
-    
-    
-    
-    
 
-    public String getCurrentChatId() {
+    public Long getCurrentChatId() {
         return currentChatId;
     }
 
-    public void setCurrentChatId(String currentChatId) {
+    public void setCurrentChatId(Long currentChatId) {
         this.currentChatId = currentChatId;
     }
+    
+    
+    
+    
+
+   
     
     
 
@@ -135,17 +171,18 @@ public class Wedding implements Serializable {
         this.receptionLatLong = receptionLatLong;
     }
 
-    
-    
-    
-    public Date getWeddingDate() {
+    public String getWeddingDate() {
         return weddingDate;
     }
 
-    public void setWeddingDate(Date weddingDate) {
+    public void setWeddingDate(String weddingDate) {
         this.weddingDate = weddingDate;
     }
 
+    
+    
+    
+    
     public Date getChurchTime() {
         return churchTime;
     }
