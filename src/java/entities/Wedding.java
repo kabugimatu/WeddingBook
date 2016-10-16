@@ -30,6 +30,7 @@ import javax.persistence.TemporalType;
         @NamedQuery(name = "fetchByChatId" ,query = "SELECT d FROM Wedding d WHERE d.currentChatId =:chatid"),
      @NamedQuery(name = "fetchByTel" ,query = "SELECT d FROM Wedding d WHERE d.telNumber =:tel"),
       @NamedQuery(name = "fetchByAdminCode" ,query = "SELECT d FROM Wedding d WHERE d.weddingCode =:wcode"),
+      @NamedQuery(name = "fetchByPublicCode" ,query = "SELECT d FROM Wedding d WHERE d.clientCode =:ccode"),
        @NamedQuery(name = "fetchByCreator" ,query = "SELECT d FROM Wedding d WHERE d.registeredBy =:creator")
         })
 public class Wedding implements Serializable {
@@ -54,15 +55,24 @@ public class Wedding implements Serializable {
     
     private String reception;
     
-    private double venueLatLong;
+    private double venueLatitude;
+    private double venueLongitude;
     
-    private double receptionLatLong;
+    private double receptionLatitude;
+     private double receptionLongitude;
     
      private String telNumber;
      
      private String locale;
      
      private String registeredBy;
+     
+     @OneToMany
+     private List<Rsvp> weddingRSVPs = new  ArrayList<>();
+     
+     @OneToMany
+     private List<WeddingSupport> weddingSupport = new ArrayList<>();
+     
      
      
     @OneToMany
@@ -155,21 +165,39 @@ public class Wedding implements Serializable {
         this.reception = reception;
     }
 
-    public double getVenueLatLong() {
-        return venueLatLong;
+    public double getVenueLatitude() {
+        return venueLatitude;
     }
 
-    public void setVenueLatLong(double venueLatLong) {
-        this.venueLatLong = venueLatLong;
+    public void setVenueLatitude(double venueLatitude) {
+        this.venueLatitude = venueLatitude;
     }
 
-    public double getReceptionLatLong() {
-        return receptionLatLong;
+    public double getVenueLongitude() {
+        return venueLongitude;
     }
 
-    public void setReceptionLatLong(double receptionLatLong) {
-        this.receptionLatLong = receptionLatLong;
+    public void setVenueLongitude(double venueLongitude) {
+        this.venueLongitude = venueLongitude;
     }
+
+    public double getReceptionLatitude() {
+        return receptionLatitude;
+    }
+
+    public void setReceptionLatitude(double receptionLatitude) {
+        this.receptionLatitude = receptionLatitude;
+    }
+
+    public double getReceptionLongitude() {
+        return receptionLongitude;
+    }
+
+    public void setReceptionLongitude(double receptionLongitude) {
+        this.receptionLongitude = receptionLongitude;
+    }
+
+  
 
     public String getWeddingDate() {
         return weddingDate;
@@ -209,6 +237,16 @@ public class Wedding implements Serializable {
     public void setCouplePhoto(byte[] couplePhoto) {
         this.couplePhoto = couplePhoto;
     }
+
+    public List<Rsvp> getWeddingRSVPs() {
+        return weddingRSVPs;
+    }
+
+    public void setWeddingRSVPs(List<Rsvp> weddingRSVPs) {
+        this.weddingRSVPs = weddingRSVPs;
+    }
+    
+    
 
     public List<BridalParty> getBridalParty() {
         return bridalParty;

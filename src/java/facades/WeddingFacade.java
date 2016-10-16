@@ -47,6 +47,20 @@ public class WeddingFacade extends AbstractFacade<Wedding> {
         
     }
     
+    public Wedding fetchByPublicCode(String adminCode){
+        Wedding dbWedding = null;
+         Query query = getEntityManager().createNamedQuery("fetchByPublicCode");
+           query.setParameter("ccode", adminCode);
+           
+           if(!query.getResultList().isEmpty()){
+               dbWedding = (Wedding)query.getResultList().get(0);
+           }
+         
+           
+           return dbWedding;
+        
+    }
+    
      public Wedding fetchWeddingByCreator(String creator){
         Wedding dbWedding = null;
          Query query = getEntityManager().createNamedQuery("fetchByCreator");

@@ -6,10 +6,18 @@
 package bots;
 
 import botconfig.BotConfig;
+import com.google.maps.GeoApiContext;
+import com.google.maps.GeocodingApi;
+import com.google.maps.GeocodingApiRequest;
+import com.google.maps.model.GeocodingResult;
+import com.google.maps.model.LatLng;
 import entities.Chat;
+import entities.Rsvp;
 import entities.Wedding;
 import facades.ChatFacade;
+import facades.RsvpFacade;
 import facades.WeddingFacade;
+import facades.WeddingSupportFacade;
 import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -38,9 +46,15 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.naming.InitialContext;
 import org.telegram.telegrambots.api.methods.GetFile;
+import org.telegram.telegrambots.api.methods.send.SendContact;
+import org.telegram.telegrambots.api.methods.send.SendDocument;
+import org.telegram.telegrambots.api.methods.send.SendLocation;
 import org.telegram.telegrambots.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.api.objects.Contact;
 import org.telegram.telegrambots.api.objects.File;
+import org.telegram.telegrambots.api.objects.Location;
 import org.telegram.telegrambots.api.objects.PhotoSize;
+import org.telegram.telegrambots.api.objects.replykeyboard.buttons.KeyboardButton;
 
 /**
  *
@@ -65,15 +79,24 @@ public class ServiceBot extends TelegramLongPollingBot {
     private static final int VIEWINGOWNWEDDINGREQ = 11;
     private static final int VIEWINGOWNWEDPHOTO = 12;
     private static final int SENDINGOWNWEDPHOTO = 13;
+    private static final int VIEWINGOTHERDING = 14;
+    private static final int SENDINGOTHERPHOTO = 15;
+    private static final int SENDINGCONTACTRSVP = 16;
 
     private boolean fromBack;
     private String filePathUrl = "https://api.telegram.org/file/bot" + BotConfig.BOT_TOKEN + "/";
     private ChatFacade chatFacade;
     private WeddingFacade weddingFacade;
+    private RsvpFacade rsvpFacade;
+    private WeddingSupportFacade weddingSupportFacade;
     private Properties sysProps;
-
+    Location receivedLocation = null;
+    GeocodingApiRequest apiReverseGeoRequest;
+    GeoApiContext geoCodeMapContext = new GeoApiContext().setApiKey("AIzaSyBhRMBYFtF8JuiWk53dLlcs4qECpfaoktA");
     private Wedding newWedding, dbWedding;
+    private Rsvp newRsvp;
     Chat dbChat;
+    SendContact sendContact = null;
 
     public ServiceBot() {
         input = getClass().getResourceAsStream("/properties/properties.properties");
@@ -82,6 +105,8 @@ public class ServiceBot extends TelegramLongPollingBot {
             // load  properties file
             this.chatFacade = (ChatFacade) new InitialContext().lookup("java:global/WeddingBook/ChatFacade");
             this.weddingFacade = (WeddingFacade) new InitialContext().lookup("java:global/WeddingBook/WeddingFacade");
+            this.rsvpFacade = (RsvpFacade) new InitialContext().lookup("java:global/WeddingBook/RsvpFacade");
+            this.weddingSupportFacade = (WeddingSupportFacade) new InitialContext().lookup("java:global/WeddingBook/WeddingSupportFacade");
             prop.load(input);
         } catch (Exception ex) {
             Logger.getLogger(ServiceBot.class.getName()).log(Level.SEVERE, null, ex);
@@ -101,7 +126,8 @@ public class ServiceBot extends TelegramLongPollingBot {
             //check if the message has text. it could also contain for example a location ( message.hasLocation() )
             try {
                 //   if(message.)
-
+                dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+               // System.out.println("Message has document --> " + message.hasDocument());
                 if (message.hasText()) {
                     //create an object that contains the information to send back the message
                     System.out.println("Command -- >" + message.getText());
@@ -113,16 +139,28 @@ public class ServiceBot extends TelegramLongPollingBot {
                         //      sendMessageRequest.setChatId(message.getChatId().toString()); //who should get from the message the sender that sent it.
                         handleIncomingMessage(message);
                     }
-                } else {
-                    dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+                } else if (message.getPhoto()!=null && !message.getPhoto().isEmpty()) {
+                    System.out.println("DOc received");
                     if (dbChat.getChatState() == SENDINGOWNWEDPHOTO) {
                         onReceiveWeddingPhoto(message);
                     }
                     //  handleIncomingMessage(message);
+                } else if (message.hasLocation() && dbChat.getChatState() == VENUEREG) {
+                    // System.out.println("Location received");
+                    onVenueRegRequest(message);
+                } else if (message.hasLocation() && dbChat.getChatState() == RECEPTIONREG) {
+                    // System.out.println("Loc received");
+                    onReceptionRegRequest(message);
+                } else if (dbChat.getChatState() == SENDINGCONTACTRSVP) {
+                    onreceiveRSVP(message);
                 }
+                else if(dbChat.getChatState() == PHONEREG){
+                    onPhoneNumberRegRequest(message);
+                }
+                //  else if(message.is)
 
             } catch (Exception e) {
-                //do some error handling
+               e.printStackTrace();
             }
         }
     }
@@ -136,6 +174,7 @@ public class ServiceBot extends TelegramLongPollingBot {
         try {
             // SendMessage sendMessageRequest = new SendMessage();
             dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+
             if (dbChat == null) {
                 chatFacade.create(new Chat(message.getChatId(), message.getFrom().getId(), MAINMENU));
                 dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
@@ -151,25 +190,29 @@ public class ServiceBot extends TelegramLongPollingBot {
                 ongettingMarriedRequest(message);
 
             } else if (message.getText().equalsIgnoreCase(prop.getProperty("viewwedding"))) {
-                Thread.sleep(500);
+              //  Thread.sleep(500);
                 sendMessage(showViewWeddingMenu(message));
 
             } else if (message.getText().equalsIgnoreCase(prop.getProperty("viewmywedding"))) {
-                Thread.sleep(500);
+           //     Thread.sleep(500);
                 messageOnViewMyWeddingRequest(message);
 
             } else if (message.getText().equalsIgnoreCase(prop.getProperty("viewotherswedding"))) {
-                Thread.sleep(500);
-                //  messageOnViewMyWeddingRequest(message);
+            //   Thread.sleep(500);
+                messageOnViewMyOtherRequest(message);
 
-            } else if (message.getText().equalsIgnoreCase(prop.getProperty("backtoviewweddingmenu")) && dbChat.getChatState() == VIEWINGOWNWEDDINGREQ) {
-
-                sendMessage(showViewWeddingMenu(message));
+            } else if (message.getText().equalsIgnoreCase(prop.getProperty("backtoviewweddingmenu"))) {
+                   sendMessage(showMainMenu(message));
 
             } else if (message.getText().equalsIgnoreCase(prop.getProperty("couplephoto"))) {
-
                 onViewWeddingPhoto(message);
 
+            } else if (message.getText().equalsIgnoreCase(prop.getProperty("venuereception"))) {
+
+                onrequestVenue(message);
+            } else if (message.getText().equalsIgnoreCase(prop.getProperty("rsvp"))) {
+
+                onRsvp(message);
             } else {
 
                 int state = 0;
@@ -203,8 +246,14 @@ public class ServiceBot extends TelegramLongPollingBot {
                     case OWNWEDDINGREQ:
                         processWeddingAdminCode(message);
                         break;
+                    case OTHERWEDDINGREQ:
+                        processWeddingPublicCode(message);
+                        break;
                     case SENDINGOWNWEDPHOTO:
                         onReceiveWeddingPhoto(message);
+                        break;
+                    case SENDINGCONTACTRSVP:
+                        onreceiveRSVP(message);
                         break;
                     default:
                         //messageOnViewWedding(message);
@@ -238,8 +287,8 @@ public class ServiceBot extends TelegramLongPollingBot {
 
             FileOutputStream outputStream = new FileOutputStream(file);
             int read = 0;
-            
-            byte[] bytes =  new byte[10000];
+
+            byte[] bytes = new byte[10000];
             while ((read = in.read(bytes)) != -1) {
                 outputStream.write(bytes, 0, read);
 
@@ -253,6 +302,124 @@ public class ServiceBot extends TelegramLongPollingBot {
         return file;
     }
 
+    private void onreceiveRSVP(Message message) {
+        // System.out.println("Receiving contact..");
+        Contact rsvpContact = message.getContact();
+        SendMessage sendMessageRequest = new SendMessage();
+        sendMessageRequest.setChatId(message.getChatId() + "");
+        try {
+            newRsvp = new Rsvp();
+            newRsvp.setFirstName(rsvpContact.getFirstName());
+            newRsvp.setFirstName(rsvpContact.getLastName());
+            newRsvp.setTelNumber(rsvpContact.getPhoneNumber());
+            dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+            dbWedding = weddingFacade.fetchByPublicCode(dbChat.getChatCode());
+            if (rsvpFacade.fetchRSVPByPhone(rsvpContact.getPhoneNumber(),dbWedding.getId()) != null) {
+                sendMessageRequest.setText(prop.getProperty("rsvpexists"));
+                sendMessage(sendMessageRequest);
+                sendMessage(showPublicWeddingMenu(message));
+            } else if (dbWedding != null) {
+                if (dbWedding.getTelNumber().equalsIgnoreCase(rsvpContact.getPhoneNumber())) {
+                    sendMessageRequest.setText(prop.getProperty("rsvpownerror"));
+                    sendMessage(sendMessageRequest);
+                } 
+                else {
+                    newRsvp.setWeddingID(dbWedding.getId());
+                    rsvpFacade.create(newRsvp);
+                    dbWedding.getWeddingRSVPs().add(newRsvp);
+                    weddingFacade.edit(dbWedding);
+                    dbChat.setChatState(VIEWINGOTHERDING);
+                    chatFacade.edit(dbChat);
+                        sendMessageRequest.setText(prop.getProperty("rsvpsuccess") +" " +Emoji.PERSON_RAISING_BOTH_HANDS_IN_CELEBRATION + " " + Emoji.PERSON_RAISING_BOTH_HANDS_IN_CELEBRATION + " " + prop.getProperty("keepposted"));
+                    sendMessage(sendMessageRequest);
+                    
+                    sendMessage(showPublicWeddingMenu(message));
+                }
+            } else {
+                sendMessage(showMainMenu(message));
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+
+    }
+
+    private void onRsvp(Message message) {
+        SendMessage sendMessageRequest = new SendMessage();
+        sendMessageRequest.setChatId(message.getChatId() + "");
+        dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+         dbWedding = weddingFacade.fetchByPublicCode(dbChat.getChatCode());
+        // sendContact = new  SendContact();
+        try {
+            System.out.println("Sending contact keyboard");
+            dbChat.setChatState(SENDINGCONTACTRSVP);
+            chatFacade.edit(dbChat);
+            sendMessage(requestContact(message,prop.getProperty("sendmycontact") + " '" + dbWedding.getCoupleName() + "'"));
+
+        } catch (Exception ex) {
+           ex.printStackTrace();
+        }
+
+    }
+
+    private void onrequestVenue(Message message) {
+        SendMessage sendMessageRequest = new SendMessage();
+        sendMessageRequest.setChatId(message.getChatId() + "");
+        try {
+            dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+            if (dbChat.getChatState() == VIEWINGOWNWEDDINGREQ) {
+                dbWedding = weddingFacade.fetchWeddingByCreator(message.getFrom().getId() + "");
+
+            } else {
+                dbWedding = weddingFacade.fetchByPublicCode(dbChat.getChatCode());
+            }
+
+            if (dbWedding == null) {
+
+                sendMessage(showMainMenu(message));
+
+            } else {
+
+                if (dbWedding.getVenue() != null && dbWedding.getReception() != null) {
+                    sendMessageRequest.setReplyToMessageId(message.getMessageId());
+
+                    sendMessageRequest.setText(dbWedding.getCoupleName() + "'s" + " wedding will be held at '" + dbWedding.getVenue() + "' and the reception at '" + dbWedding.getReception() + "'");
+                    sendMessage(sendMessageRequest);
+                }
+
+                if (dbWedding.getVenueLatitude() != 0) {
+                    sendMessageRequest.setText("The venue >> ");
+                    sendMessage(sendMessageRequest);
+
+                    SendLocation venueLocation = new SendLocation();
+                    venueLocation.setLatitude(new Float(dbWedding.getVenueLatitude()));
+                    venueLocation.setLongitude(new Float(dbWedding.getVenueLongitude()));
+                    venueLocation.setChatId(message.getChatId() + "");
+                    /// venueLocation.setReplyToMessageId(message.getMessageId());
+
+                    sendLocation(venueLocation);
+                }
+                if (dbWedding.getReceptionLatitude() != 0) {
+                    sendMessageRequest.setText("The reception >> ");
+                    sendMessageRequest.setChatId(message.getChatId() + "");
+                    sendMessage(sendMessageRequest);
+                    SendLocation receptionLocation = new SendLocation();
+                    receptionLocation.setLatitude(new Float(dbWedding.getReceptionLatitude()));
+                    receptionLocation.setLongitude(new Float(dbWedding.getReceptionLongitude()));
+                    receptionLocation.setChatId(message.getChatId() + "");
+                    receptionLocation.setReplyToMessageId(message.getMessageId());
+                    sendLocation(receptionLocation);
+                }
+
+            }
+
+        } catch (Exception ex) {
+            Logger.getLogger(ServiceBot.class.getName()).log(Level.SEVERE, null, ex);
+
+        }
+
+    }
+
     private void onReceiveWeddingPhoto(Message message) {
         SendMessage sendMessageRequest = new SendMessage();
         sendMessageRequest.setChatId(message.getChatId() + "");
@@ -264,36 +431,33 @@ public class ServiceBot extends TelegramLongPollingBot {
                 dbWedding = weddingFacade.fetchWeddingByCreator(message.getFrom().getId() + "");
                 List<PhotoSize> photos = message.getPhoto();
                 System.out.println("Photos --> " + photos.size());
-                for (int i = 0; i < photos.size(); i++) {
 
-                    GetFile getFileRequest = new GetFile();
-                    getFileRequest.setFileId(photos.get(i).getFileId());
-                    File file = getFile(getFileRequest);
-                    //  System.out.println(file.getFilePath());
-                    downloadFilePath = filePathUrl + file.getFilePath();
-                    System.out.println("Photo --> " + downloadFilePath);
-                    java.io.File fileFromSystem = downloadFile(downloadFilePath);
+                GetFile getFileRequest = new GetFile();
+                // if(photos.get(i).)
+                getFileRequest.setFileId(photos.get(photos.size() - 1).getFileId());
+                File file = getFile(getFileRequest);
+                //  System.out.println(file.getFilePath());
+                downloadFilePath = filePathUrl + file.getFilePath();
+                System.out.println("Photo --> " + downloadFilePath);
+                java.io.File fileFromSystem = downloadFile(downloadFilePath);
 
-                    byte[] bytes = new byte[(int) fileFromSystem.length()];
+                byte[] bytes = new byte[(int) fileFromSystem.length()];
 
-                    System.out.println("Wedding photo Size --> " + bytes.length);
-                    FileInputStream fileInputStream = new FileInputStream(fileFromSystem);
-                    fileInputStream.read(bytes);
-                    dbWedding.setCouplePhoto(bytes);
-                    weddingFacade.edit(dbWedding);
-                    dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
-                    dbChat.setChatState(VIEWINGOWNWEDDINGREQ);
-                    chatFacade.edit(dbChat);
-                    sendMessageRequest.setText(prop.getProperty("photoreceived"));
-                    sendMessage(sendMessageRequest);
+                System.out.println("Wedding photo Size --> " + bytes.length);
+                FileInputStream fileInputStream = new FileInputStream(fileFromSystem);
+                fileInputStream.read(bytes);
+                dbWedding.setCouplePhoto(bytes);
+                weddingFacade.edit(dbWedding);
+                dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+                dbChat.setChatState(VIEWINGOWNWEDDINGREQ);
+                chatFacade.edit(dbChat);
+                sendMessageRequest.setText(prop.getProperty("photoreceived"));
+                sendMessage(sendMessageRequest);
 
-                    sendMessageRequest = showOwnWeddingMenu(message);
-                    sendMessageRequest.setChatId(message.getChatId() + "");
-                    sendMessage(sendMessageRequest);
-                    // fileFromSystem.delete();
-
-                    break;
-                }
+                sendMessageRequest = showOwnWeddingMenu(message);
+                sendMessageRequest.setChatId(message.getChatId() + "");
+                sendMessage(sendMessageRequest);
+                // fileFromSystem.delete();
 
             } else {
                 hideKeyboard(message.getFrom().getId(), message.getChatId(), message.getMessageId());
@@ -312,9 +476,9 @@ public class ServiceBot extends TelegramLongPollingBot {
         try {
             //System.out.println("Wedding photo request--> " );
             dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
-            dbWedding = weddingFacade.fetchWeddingByCreator(message.getFrom().getId() + "");
             if (dbChat != null && dbChat.getChatState() == VIEWINGOWNWEDDINGREQ) {
 
+                dbWedding = weddingFacade.fetchWeddingByCreator(message.getFrom().getId() + "");
                 if (dbWedding.getCouplePhoto() == null) {
                     hideKeyboard(message.getFrom().getId(), message.getChatId(), message.getMessageId());
                     sendMessageRequest.setText(prop.getProperty("photorequest"));
@@ -328,13 +492,42 @@ public class ServiceBot extends TelegramLongPollingBot {
                     fos.write(dbWedding.getCouplePhoto());
                     fos.close();
 
-                    SendPhoto sendPhotoRequest = new SendPhoto();
-                    sendPhotoRequest.setChatId(message.getChatId().toString());
+                    SendDocument sendDocRequest = new SendDocument();
+
+                    sendDocRequest.setChatId(message.getChatId().toString());
                     java.io.File fileToSend = new java.io.File(strFilePath);
-                    sendPhotoRequest.setNewPhoto(fileToSend);
+                    sendDocRequest.setNewDocument(fileToSend);
 
                     //    System.out.println("Sending phtoto -->   " + strFilePath );
-                    sendPhoto(sendPhotoRequest);
+                    sendDocument(sendDocRequest);
+                    fileToSend.delete();
+
+                }
+
+            } else {
+
+                dbWedding = weddingFacade.fetchByPublicCode(dbChat.getChatCode());
+
+                if (dbWedding.getCouplePhoto() == null) {
+
+                    sendMessageRequest.setText(prop.getProperty("nophotopublic"));
+                    sendMessage(sendMessageRequest);
+
+                } else {
+
+                    String strFilePath = sysProps.getProperty("user.home") + sysProps.getProperty("file.separator") + "Documents" + sysProps.getProperty("file.separator") + "dev" + sysProps.getProperty("file.separator") + new Random().nextInt(100) + ".jpeg";
+                    FileOutputStream fos = new FileOutputStream(strFilePath);
+                    fos.write(dbWedding.getCouplePhoto());
+                    fos.close();
+
+                    SendDocument sendDocRequest = new SendDocument();
+
+                    sendDocRequest.setChatId(message.getChatId().toString());
+                    java.io.File fileToSend = new java.io.File(strFilePath);
+                    sendDocRequest.setNewDocument(fileToSend);
+
+                    //    System.out.println("Sending phtoto -->   " + strFilePath );
+                    sendDocument(sendDocRequest);
                     fileToSend.delete();
 
                 }
@@ -345,6 +538,37 @@ public class ServiceBot extends TelegramLongPollingBot {
             ex.printStackTrace();
         }
 
+    }
+
+    private void processWeddingPublicCode(Message message) {
+        SendMessage sendMessageRequest = new SendMessage();
+        sendMessageRequest.setChatId(message.getChatId() + "");
+        try {
+            dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+            if (dbChat != null && dbChat.getChatState() == OTHERWEDDINGREQ) {
+                dbWedding = weddingFacade.fetchByPublicCode(message.getText());
+                if (dbWedding != null) {
+                    sendMessageRequest.setText(prop.getProperty("ownweddingwelcoome") + Emoji.WAVING_HAND_SIGN + " ?" + "\n" + "You are now viewing '" + dbWedding.getCoupleName() + "'s ' wedding  ");
+                    sendMessage(sendMessageRequest);
+
+                    sendMessageRequest = showPublicWeddingMenu(message);
+                    sendMessageRequest.setChatId(message.getChatId() + "");
+                    Thread.sleep(500);
+                    sendMessage(sendMessageRequest);
+                    dbChat.setChatState(VIEWINGOTHERDING);
+                    dbChat.setChatCode(message.getText());
+                    chatFacade.edit(dbChat);
+
+                } else {
+                    sendMessageRequest.setText(prop.getProperty("invalidadmincode") + " " + Emoji.ASTONISHED_FACE);
+                    sendMessage(sendMessageRequest);
+                }
+            } else {
+                showMainMenu(message);
+            }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
     }
 
     private void processWeddingAdminCode(Message message) {
@@ -372,6 +596,29 @@ public class ServiceBot extends TelegramLongPollingBot {
             } else {
                 showMainMenu(message);
             }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    private void messageOnViewMyOtherRequest(Message message) {
+        SendMessage sendMessageRequest = new SendMessage();
+        sendMessageRequest.setChatId(message.getChatId() + "");
+        // System.out.println("Requeting code");
+        try {
+            dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+            if (dbChat != null && dbChat.getChatState() == VIEWWEDDING) {
+                dbChat.setChatState(OTHERWEDDINGREQ);
+                chatFacade.edit(dbChat);
+                hideKeyboard(message.getFrom().getId(), message.getChatId(), message.getMessageId());
+                // Thread.sleep(1000);
+                sendMessageRequest.setText(prop.getProperty("weddingpubliccodereq"));
+                sendMessage(sendMessageRequest);
+
+            } else {
+                showMainMenu(message);
+            }
+
         } catch (Exception ex) {
             ex.printStackTrace();
         }
@@ -413,16 +660,16 @@ public class ServiceBot extends TelegramLongPollingBot {
                     sendMessageRequest.setText(Emoji.SMILING_FACE_WITH_SMILING_EYES + " " + prop.getProperty("detectregmsg") + " '" + prop.getProperty("viewwedding") + "' instead.");
                     sendMessage(sendMessageRequest);
                 } else {
-                    Thread.sleep(500);
+                 //   Thread.sleep(500);
                     chatStatus.setChatState(COUPLENAMEREG);
                     chatFacade.edit(chatStatus);
                     sendMessageRequest.setChatId(message.getChatId() + "");
+                    hideKeyboard(message.getFrom().getId(), message.getChatId(), message.getMessageId());
                     sendMessageRequest.setText(prop.getProperty("congratsmessg") + Emoji.SMILING_FACE_WITH_SMILING_EYES);
                     sendMessage(sendMessageRequest);
                     sendMessageRequest.setChatId(message.getChatId() + "");
                     sendMessageRequest.setText(prop.getProperty("couplerequest"));
                     sendMessage(sendMessageRequest);
-                    hideKeyboard(message.getFrom().getId(), message.getChatId(), message.getMessageId());
 
                 }
             } else {
@@ -502,14 +749,14 @@ public class ServiceBot extends TelegramLongPollingBot {
                     sendMessage.setText(prop.getProperty("congratsmsg") + newWedding.getCoupleName() + " " + Emoji.THUMBS_UP_SIGN + " ");
                     sendMessage.setChatId(message.getChatId() + "");
                     sendMessage(sendMessage);
-                    Thread.sleep(1000);
+                  //  Thread.sleep(1000);
                     sendMessage.setText(" Your admin wedding code is >> " + newWedding.getWeddingCode());
                     sendMessage.setChatId(message.getChatId() + "");
                     sendMessage(sendMessage);
                     sendMessage.setText(" Your public wedding code is >> " + newWedding.getClientCode() + ". " + prop.getProperty("publiccodemessg"));
                     sendMessage.setChatId(message.getChatId() + "");
                     sendMessage(sendMessage);
-                    Thread.sleep(1000);
+                  //  Thread.sleep(1000);
                     //Request Venue
                     chatFacade.edit(dbChat);
                     sendMessage.setChatId(message.getChatId() + "");
@@ -543,7 +790,7 @@ public class ServiceBot extends TelegramLongPollingBot {
 
     private void onPhoneNumberRegRequest(Message message) {
         SendMessage sendMessage = new SendMessage();
-
+         Contact receivedContact = message.getContact();
         dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
         if (dbChat != null && dbChat.getChatState() == PHONEREG) {
             dbChat.setChatState(COMPLETEREG);
@@ -556,7 +803,7 @@ public class ServiceBot extends TelegramLongPollingBot {
                         sendMessage.setText(prop.getProperty("phonenoreqerr"));
                         sendMessage(sendMessage);
                     } else {
-                        dbWedding.setTelNumber(message.getText());
+                        dbWedding.setTelNumber(receivedContact.getPhoneNumber());
                         dbWedding.setCurrentChatId(dbChat.getId());
                         weddingFacade.edit(dbWedding);
                         chatFacade.edit(dbChat);
@@ -581,7 +828,8 @@ public class ServiceBot extends TelegramLongPollingBot {
 
     private void onReceptionRegRequest(Message message) {
         SendMessage sendMessage = new SendMessage();
-        sendMessage.setText(prop.getProperty("phonenoreq"));
+       
+           sendMessage.setText(prop.getProperty("phonenoreq"));
         dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
         if (dbChat != null && dbChat.getChatState() == RECEPTIONREG) {
             dbChat.setChatState(PHONEREG);
@@ -589,13 +837,24 @@ public class ServiceBot extends TelegramLongPollingBot {
             dbWedding = weddingFacade.fetchWeddingByChatId(dbChat.getId());
             if (dbWedding != null) {
                 try {
-                    dbWedding.setReception(message.getText());
+
                     dbWedding.setCurrentChatId(dbChat.getId());
+                    if (message.hasLocation()) {
+                        receivedLocation = message.getLocation();
+                        dbWedding.setReceptionLatitude(receivedLocation.getLatitude());
+                        dbWedding.setReceptionLongitude(receivedLocation.getLongitude());
+//                        GeocodingResult[] results = GeocodingApi.newRequest(geoCodeMapContext).latlng(new LatLng(receivedLocation.getLatitude(), receivedLocation.getLongitude())).await();
+//                        dbWedding.setReception(results[0].formattedAddress);
+                    } else {
+                        dbWedding.setReception(message.getText());
+                    }
                     weddingFacade.edit(dbWedding);
                     chatFacade.edit(dbChat);
                     Thread.sleep(1000);
                     sendMessage.setChatId(message.getChatId() + "");
                     sendMessage(sendMessage);
+                    
+                    sendMessage(requestContact(message, prop.getProperty("sendmycontactreg")));
                 } catch (Exception ex) {
 
                 }
@@ -609,15 +868,26 @@ public class ServiceBot extends TelegramLongPollingBot {
         SendMessage sendMessage = new SendMessage();
         sendMessage.setText(prop.getProperty("receptionmsg"));
         dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+
         if (dbChat != null && dbChat.getChatState() == VENUEREG) {
             dbChat.setChatState(RECEPTIONREG);
 
             dbWedding = weddingFacade.fetchWeddingByChatId(dbChat.getId());
             if (dbWedding != null) {
                 try {
+
                     chatFacade.edit(dbChat);
-                    dbWedding.setVenue(message.getText());
+                    if (message.hasLocation()) {
+                        receivedLocation = message.getLocation();
+                        dbWedding.setVenueLatitude(receivedLocation.getLatitude());
+                        dbWedding.setVenueLongitude(receivedLocation.getLongitude());
+//                        GeocodingResult[] results = GeocodingApi.newRequest(geoCodeMapContext).latlng(new LatLng(receivedLocation.getLatitude(), receivedLocation.getLongitude())).await();
+//                        dbWedding.setVenue(results[0].formattedAddress);
+//                    } else {
+                        dbWedding.setVenue(message.getText());
+                    }
                     dbWedding.setCurrentChatId(dbChat.getId());
+
                     weddingFacade.edit(dbWedding);
                     Thread.sleep(500);
                     sendMessage.setChatId(message.getChatId() + "");
@@ -659,9 +929,33 @@ public class ServiceBot extends TelegramLongPollingBot {
 
         KeyboardRow keyboardSecondRow = new KeyboardRow();
         keyboardSecondRow.add(prop.getProperty("viewotherswedding"));
-//        keyboardSecondRow.add(getRateCommand(language));
+
+        KeyboardRow keyboardThirdRow = new KeyboardRow();
+        keyboardThirdRow.add(prop.getProperty("backtoviewweddingmenu"));
+
         keyboard.add(keyboardFirstRow);
         keyboard.add(keyboardSecondRow);
+        keyboard.add(keyboardThirdRow);
+        replyKeyboardMarkup.setKeyboard(keyboard);
+
+        return replyKeyboardMarkup;
+    }
+
+    private ReplyKeyboardMarkup getMainContactRequestKeyBoard(String text) {
+        ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
+        replyKeyboardMarkup.setSelective(true);
+        replyKeyboardMarkup.setResizeKeyboard(true);
+        replyKeyboardMarkup.setOneTimeKeyboad(false);
+
+        List<KeyboardRow> keyboard = new ArrayList<>();
+        KeyboardRow keyboardFirstRow = new KeyboardRow();
+
+        KeyboardButton contactKeyboardBTN = new KeyboardButton();
+        contactKeyboardBTN.setRequestContact(true);
+        contactKeyboardBTN.setText(text);
+
+        keyboardFirstRow.add(contactKeyboardBTN);
+        keyboard.add(keyboardFirstRow);
         replyKeyboardMarkup.setKeyboard(keyboard);
 
         return replyKeyboardMarkup;
@@ -676,6 +970,7 @@ public class ServiceBot extends TelegramLongPollingBot {
         List<KeyboardRow> keyboard = new ArrayList<>();
         KeyboardRow keyboardFirstRow = new KeyboardRow();
         keyboardFirstRow.add(prop.getProperty("gettingMarried"));
+        KeyboardButton kbtn = new KeyboardButton();
 
         KeyboardRow keyboardSecondRow = new KeyboardRow();
         keyboardSecondRow.add(prop.getProperty("viewwedding"));
@@ -687,10 +982,19 @@ public class ServiceBot extends TelegramLongPollingBot {
         return replyKeyboardMarkup;
     }
 
+    private SendMessage requestContact(Message message,String text) throws TelegramApiException {
+        SendMessage sendMessageRequest;
+        sendMessageRequest = sendChooseOptionMessage(message.getChatId(), message.getMessageId(),
+                getMainContactRequestKeyBoard(text), Emoji.SMILING_FACE_WITH_SMILING_EYES + "");
+      //  dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+
+        return sendMessageRequest;
+    }
+
     private SendMessage showMainMenu(Message message) throws TelegramApiException {
         SendMessage sendMessageRequest;
         sendMessageRequest = sendChooseOptionMessage(message.getChatId(), message.getMessageId(),
-                getMainMenuKeyboard());
+                getMainMenuKeyboard(), prop.getProperty("helpmsg"));
         dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
         if (dbChat != null) {
 
@@ -726,6 +1030,52 @@ public class ServiceBot extends TelegramLongPollingBot {
         return sendMessageRequest;
     }
 
+    private SendMessage showPublicWeddingMenu(Message message) throws TelegramApiException {
+        SendMessage sendMessageRequest = sendChooseViewPublicWeddingOptionMessage(message.getChatId(), message.getMessageId(),
+                getViewPublicWeddingMenuKeyboard());;
+
+          dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+          if(dbChat!=null){
+              dbChat.setChatState(VIEWINGOTHERDING);
+              chatFacade.edit(dbChat);
+          }
+          else{
+               chatFacade.create(new Chat(message.getChatId(), message.getFrom().getId(), MAINMENU));
+          }
+                
+        return sendMessageRequest;
+    }
+
+    private ReplyKeyboardMarkup getViewPublicWeddingMenuKeyboard() {
+        ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
+        replyKeyboardMarkup.setSelective(true);
+        replyKeyboardMarkup.setResizeKeyboard(true);
+        replyKeyboardMarkup.setOneTimeKeyboad(false);
+
+        List<KeyboardRow> keyboard = new ArrayList<>();
+        KeyboardRow keyboardFirstRow = new KeyboardRow();
+        keyboardFirstRow.add(prop.getProperty("couplephoto"));
+
+        KeyboardRow keyboardSecondRow = new KeyboardRow();
+        keyboardSecondRow.add(prop.getProperty("venuereception"));
+        keyboardSecondRow.add(prop.getProperty("rsvp"));
+
+//        keyboardSecondRow.add(getRateCommand(language));
+//        KeyboardRow keyboardThridRow = new KeyboardRow();
+//        keyboardThridRow.add(prop.getProperty("supportus"));
+        KeyboardRow keyboardFourthRow = new KeyboardRow();
+        keyboardFourthRow.add(prop.getProperty("backtoviewweddingmenu"));
+
+        keyboard.add(keyboardFirstRow);
+        keyboard.add(keyboardSecondRow);
+        //  keyboard.add(keyboardThridRow);
+        keyboard.add(keyboardFourthRow);
+
+        replyKeyboardMarkup.setKeyboard(keyboard);
+
+        return replyKeyboardMarkup;
+    }
+
     private ReplyKeyboardMarkup getViewOwnWeddingMenuKeyboard() {
         ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
         replyKeyboardMarkup.setSelective(true);
@@ -735,22 +1085,37 @@ public class ServiceBot extends TelegramLongPollingBot {
         List<KeyboardRow> keyboard = new ArrayList<>();
         KeyboardRow keyboardFirstRow = new KeyboardRow();
         keyboardFirstRow.add(prop.getProperty("couplephoto"));
-        keyboardFirstRow.add(prop.getProperty("bridalparty"));
 
         KeyboardRow keyboardSecondRow = new KeyboardRow();
         keyboardSecondRow.add(prop.getProperty("venuereception"));
-        keyboardSecondRow.add(prop.getProperty("editwedding"));
-//        keyboardSecondRow.add(getRateCommand(language));
 
-        replyKeyboardMarkup.setKeyboard(keyboard);
-        KeyboardRow keyboardThridRow = new KeyboardRow();
-        keyboardThridRow.add(prop.getProperty("backtoviewweddingmenu"));
-        keyboardThridRow.add(prop.getProperty("cancelwedding"));
+//        keyboardSecondRow.add(getRateCommand(language));
+//        KeyboardRow keyboardThridRow = new KeyboardRow();
+//        keyboardThridRow.add(prop.getProperty("supportus"));
+
+        KeyboardRow keyboardFourthRow = new KeyboardRow();
+        keyboardFourthRow.add(prop.getProperty("backtoviewweddingmenu"));
+
         keyboard.add(keyboardFirstRow);
         keyboard.add(keyboardSecondRow);
-        keyboard.add(keyboardThridRow);
+     //   keyboard.add(keyboardThridRow);
+        keyboard.add(keyboardFourthRow);
+
+        replyKeyboardMarkup.setKeyboard(keyboard);
 
         return replyKeyboardMarkup;
+    }
+
+    private SendMessage sendChooseViewPublicWeddingOptionMessage(Long chatId, Integer messageId,
+            ReplyKeyboard replyKeyboard) {
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.enableMarkdown(true);
+        sendMessage.setChatId(chatId.toString());
+        sendMessage.setReplyToMessageId(messageId);
+        sendMessage.setReplyMarkup(replyKeyboard);
+        sendMessage.setText(prop.getProperty("helpmsg"));
+
+        return sendMessage;
     }
 
     private SendMessage sendChooseViewOwnWeddingOptionMessage(Long chatId, Integer messageId,
@@ -766,13 +1131,13 @@ public class ServiceBot extends TelegramLongPollingBot {
     }
 
     private SendMessage sendChooseOptionMessage(Long chatId, Integer messageId,
-            ReplyKeyboard replyKeyboard) {
+            ReplyKeyboard replyKeyboard, String text) {
         SendMessage sendMessage = new SendMessage();
         sendMessage.enableMarkdown(true);
         sendMessage.setChatId(chatId.toString());
-        sendMessage.setReplyToMessageId(messageId);
+        //   sendMessage.setReplyToMessageId(messageId);
         sendMessage.setReplyMarkup(replyKeyboard);
-        sendMessage.setText(prop.getProperty("helpmsg"));
+        sendMessage.setText(text);
 
         return sendMessage;
     }
