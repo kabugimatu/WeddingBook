@@ -33,6 +33,7 @@ public class Chat implements Serializable {
     private Long chatId;
     private int userId;
     private int chatState;
+     
      private String chatCode;
 
     public Chat(Long chatId, int userId, int chatState) {
@@ -82,6 +83,10 @@ public class Chat implements Serializable {
     public void setChatState(int chatState) {
         this.chatState = chatState;
     }
+
+   
+    
+    
 
     
     
