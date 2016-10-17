@@ -33,6 +33,7 @@ public class Chat implements Serializable {
     private Long chatId;
     private int userId;
     private int chatState;
+    private String chatPreviousStep;
      
      private String chatCode;
 
@@ -41,6 +42,16 @@ public class Chat implements Serializable {
         this.userId = userId;
         this.chatState = chatState;
     }
+
+    public String getChatPreviousStep() {
+        return chatPreviousStep;
+    }
+
+    public void setChatPreviousStep(String chatPreviousStep) {
+        this.chatPreviousStep = chatPreviousStep;
+    }
+    
+    
 
     public Chat() {
     }

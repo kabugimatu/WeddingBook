@@ -7,10 +7,7 @@ package bots;
 
 import botconfig.BotConfig;
 import com.google.maps.GeoApiContext;
-import com.google.maps.GeocodingApi;
 import com.google.maps.GeocodingApiRequest;
-import com.google.maps.model.GeocodingResult;
-import com.google.maps.model.LatLng;
 import entities.Chat;
 import entities.Rsvp;
 import entities.Wedding;
@@ -18,10 +15,8 @@ import facades.ChatFacade;
 import facades.RsvpFacade;
 import facades.WeddingFacade;
 import facades.WeddingSupportFacade;
-import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.telegram.telegrambots.TelegramApiException;
@@ -35,7 +30,6 @@ import org.telegram.telegrambots.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import support.Emoji;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.URL;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -49,7 +43,6 @@ import org.telegram.telegrambots.api.methods.GetFile;
 import org.telegram.telegrambots.api.methods.send.SendContact;
 import org.telegram.telegrambots.api.methods.send.SendDocument;
 import org.telegram.telegrambots.api.methods.send.SendLocation;
-import org.telegram.telegrambots.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.api.objects.Contact;
 import org.telegram.telegrambots.api.objects.File;
 import org.telegram.telegrambots.api.objects.Location;
@@ -86,6 +79,8 @@ public class ServiceBot extends TelegramLongPollingBot {
     private static final int PHOTOEDITMODE = 18;
     private static final int VENUEEDITMODE = 19;
     private static final int RECEPTIONEDITMODE = 20;
+    private static final int COUPLESNAMEDITMODE = 21;
+    private static final int COUPLESDATEDITMODE = 22;
 
     private boolean fromBack;
     private String filePathUrl = "https://api.telegram.org/file/bot" + BotConfig.BOT_TOKEN + "/";
@@ -134,7 +129,7 @@ public class ServiceBot extends TelegramLongPollingBot {
                 // System.out.println("Message has document --> " + message.hasDocument());
                 if (message.hasText()) {
                     //create an object that contains the information to send back the message
-                    System.out.println("Command -- >" + message.getText());
+                  //  System.out.println("Command -- >" + message.getText());
                     if (message.getText().startsWith("?")) {
                         sendMessageRequest.setChatId(message.getChatId().toString());
                         sendMessageRequest.setText(Emoji.THUMBS_UP_SIGN + "");
@@ -148,7 +143,7 @@ public class ServiceBot extends TelegramLongPollingBot {
                     if (dbChat.getChatState() == SENDINGOWNWEDPHOTO) {
                         onReceiveWeddingPhoto(message);
                     }
-                     if (dbChat.getChatState() == PHOTOEDITMODE) {
+                    if (dbChat.getChatState() == PHOTOEDITMODE) {
                         onReceiveWeddingEditPhoto(message);
                     }
                     //  handleIncomingMessage(message);
@@ -193,28 +188,33 @@ public class ServiceBot extends TelegramLongPollingBot {
             }
 
             if (message.getText().equalsIgnoreCase(prop.getProperty("commandstart"))) {
-                System.out.println("Showing menu..");
+               // System.out.println("Showing menu..");
 
                 sendMessage(showMainMenu(message));
-            } 
-            else if (message.getText().equalsIgnoreCase(prop.getProperty("commandstop"))) {
+            } else if (message.getText().equalsIgnoreCase(prop.getProperty("commandstop"))) {
                 hideKeyboard(message.getFrom().getId(), message.getChatId(), message.getMessageId());
-            } 
-            
-            else if (message.getText().equalsIgnoreCase(prop.getProperty("commandback"))) {
+            } else if (message.getText().equalsIgnoreCase(prop.getProperty("commandback"))) {
                 hideKeyboard(message.getFrom().getId(), message.getChatId(), message.getMessageId());
                 sendMessage(showViewWeddingMenu(message));
-            }
-            else if (message.getText().equalsIgnoreCase(prop.getProperty("gettingMarried"))) {
+            } else if (message.getText().equalsIgnoreCase(prop.getProperty("gettingMarried"))) {
                 ongettingMarriedRequest(message);
 
             } else if (message.getText().equalsIgnoreCase(prop.getProperty("viewwedding"))) {
                 //  Thread.sleep(500);
                 sendMessage(showViewWeddingMenu(message));
 
-            } else if (message.getText().equalsIgnoreCase(prop.getProperty("viewmywedding"))) {
+            }
+            else if (message.getText().equalsIgnoreCase(prop.getProperty("viewmywedding"))) {
                 //     Thread.sleep(500);
-                messageOnViewMyWeddingRequest(message);
+                switch(dbChat.getChatState()){
+                    case EDITMODE:
+                        sendMessage(showOwnWeddingMenu(message));
+                        break;
+                    default :
+                        messageOnViewMyWeddingRequest(message);
+                        break;
+                }
+                //messageOnViewMyWeddingRequest(message);
 
             } else if (message.getText().equalsIgnoreCase(prop.getProperty("viewotherswedding"))) {
                 //   Thread.sleep(500);
@@ -232,14 +232,23 @@ public class ServiceBot extends TelegramLongPollingBot {
             } else if (message.getText().equalsIgnoreCase(prop.getProperty("rsvp"))) {
 
                 onRsvp(message);
+            } else if (message.getText().equalsIgnoreCase(prop.getProperty("rsvpguestsview"))) {
+
+                viewRsvpGuests(message);
             } else if (message.getText().equalsIgnoreCase(prop.getProperty("editwedding"))) {
-                sendMessage(showOwnEditMenu(message));
+                sendMessage(showOwnEditMenu(message, prop.getProperty("viewmywedding")));
             } else if (message.getText().equalsIgnoreCase(prop.getProperty("editcouplephoto")) && dbChat.getChatState() == EDITMODE) {
                 hideKeyboard(message.getFrom().getId(), message.getChatId(), message.getMessageId());
                 requestEditPhoto(message);
             } else if (message.getText().equalsIgnoreCase(prop.getProperty("editvenuereception")) && dbChat.getChatState() == EDITMODE) {
                 hideKeyboard(message.getFrom().getId(), message.getChatId(), message.getMessageId());
                 requestEditVenue(message);
+            } else if (message.getText().equalsIgnoreCase(prop.getProperty("couplesnameedit"))) {
+                hideKeyboard(message.getFrom().getId(), message.getChatId(), message.getMessageId());
+                onRequestEditName(message);
+            } else if (message.getText().equalsIgnoreCase(prop.getProperty("editweddingdate"))) {
+                hideKeyboard(message.getFrom().getId(), message.getChatId(), message.getMessageId());
+                onRequestEditDate(message);
             } else {
 
                 int state = 0;
@@ -294,6 +303,14 @@ public class ServiceBot extends TelegramLongPollingBot {
                         onReceptionRegEditRequest(message);
                         break;
 
+                    case COUPLESNAMEDITMODE:
+                        onReceiveEditNameRegRequest(message);
+                        break;
+
+                    case COUPLESDATEDITMODE:
+                        onweddingDateEditRegRequest(message);
+                        break;
+
                     default:
                         //messageOnViewWedding(message);
                         break;
@@ -301,6 +318,109 @@ public class ServiceBot extends TelegramLongPollingBot {
             }
 
         } catch (Exception ex) {
+            Logger.getLogger(ServiceBot.class.getName()).log(Level.SEVERE, null, ex);
+        }
+
+    }
+
+    private void onweddingDateEditRegRequest(Message message) {
+        SendMessage sendMessage = new SendMessage();
+
+        try {
+
+            dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+            if (dbChat != null && dbChat.getChatState() == COUPLESDATEDITMODE) {
+               dbWedding = weddingFacade.fetchWeddingByCreator(message.getFrom().getId()+"");
+                if (dbWedding != null) {
+                    dbChat.setChatState(EDITMODE);
+                    dbWedding.setWeddingDate(message.getText());
+                    dbWedding.setCurrentChatId(dbChat.getId());
+                    chatFacade.edit(dbChat);
+                    weddingFacade.edit(dbWedding);
+                    sendMessage.setChatId(message.getChatId() + "");
+                    sendMessage.setText(prop.getProperty("thankyou"));
+                    sendMessage(sendMessage);
+
+                    sendMessage.setChatId(message.getChatId() + "");
+                    sendMessage(showOwnEditMenu(message, prop.getProperty("viewmywedding")));
+                }
+            }
+        } catch (Exception ex) {
+            sendMessage.setChatId(message.getChatId() + "");
+            sendMessage.setText(prop.getProperty("parsedateerr"));
+            try {
+                sendMessage(sendMessage);
+                dbChat.setChatState(EDITMODE);
+                chatFacade.edit(dbChat);
+            } catch (TelegramApiException ex1) {
+                dbChat.setChatState(EDITMODE);
+                chatFacade.edit(dbChat);
+                Logger.getLogger(ServiceBot.class.getName()).log(Level.SEVERE, null, ex1);
+            }
+        }
+    }
+
+    private void onRequestEditDate(Message message) {
+        try {
+            dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+            SendMessage sendMessage = new SendMessage();
+            sendMessage.setText(prop.getProperty("editdaterequest"));
+            sendMessage.setChatId(message.getChatId() + "");
+            sendMessage(sendMessage);
+           
+            dbChat.setChatState(COUPLESDATEDITMODE);
+            chatFacade.edit(dbChat);
+
+        } catch (TelegramApiException ex) {
+            Logger.getLogger(ServiceBot.class.getName()).log(Level.SEVERE, null, ex);
+        }
+
+    }
+
+    private void onReceiveEditNameRegRequest(Message message) {
+        SendMessage sendMessage = new SendMessage();
+        try {
+            //  int chatState = 0;
+            dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+            if (dbChat != null && dbChat.getChatState() == COUPLESNAMEDITMODE) {
+                dbWedding = weddingFacade.fetchWeddingByCreator(message.getFrom().getId()+"");
+                if (dbWedding != null) {
+                    dbWedding.setCoupleName(message.getText());
+                    weddingFacade.edit(dbWedding);
+                    dbChat.setChatState(EDITMODE);
+
+                    sendMessage.setText(prop.getProperty("congratsmsg") + dbWedding.getCoupleName() + " " + Emoji.THUMBS_UP_SIGN + " ");
+                    sendMessage.setChatId(message.getChatId() + "");
+                    sendMessage(sendMessage);
+
+                    chatFacade.edit(dbChat);
+
+                    sendMessage.setChatId(message.getChatId() + "");
+                    
+                    sendMessage(showOwnEditMenu(message, prop.getProperty("viewmywedding")));
+
+                }
+
+            }
+
+        } catch (Exception ex) {
+            Logger.getLogger(ServiceBot.class.getName()).log(Level.SEVERE, null, ex);
+        }
+
+    }
+
+    private void onRequestEditName(Message message) {
+        try {
+            dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+            SendMessage sendMessage = new SendMessage();
+            sendMessage.setText(prop.getProperty("couplerequestedit"));
+            sendMessage.setChatId(message.getChatId() + "");
+            sendMessage(sendMessage);
+           
+            dbChat.setChatState(COUPLESNAMEDITMODE);
+            chatFacade.edit(dbChat);
+
+        } catch (TelegramApiException ex) {
             Logger.getLogger(ServiceBot.class.getName()).log(Level.SEVERE, null, ex);
         }
 
@@ -333,6 +453,7 @@ public class ServiceBot extends TelegramLongPollingBot {
                     // Thread.sleep(1000);
                     sendMessage.setChatId(message.getChatId() + "");
                     sendMessage(sendMessage);
+                    sendMessage(showOwnWeddingMenu(message));
 
                 } catch (Exception ex) {
 
@@ -346,19 +467,19 @@ public class ServiceBot extends TelegramLongPollingBot {
     private void onVenueRegEditRequest(Message message) {
         SendMessage sendMessage = new SendMessage();
         sendMessage.setText(prop.getProperty("receptionmsg"));
-          sendMessage.setChatId(message.getChatId() + "");
+        sendMessage.setChatId(message.getChatId() + "");
         dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
-   try {
-        if (dbChat != null && dbChat.getChatState() == VENUEEDITMODE) {
-            dbChat.setChatState(RECEPTIONEDITMODE);
+        try {
+            if (dbChat != null && dbChat.getChatState() == VENUEEDITMODE) {
+                dbChat.setChatState(RECEPTIONEDITMODE);
 
-            dbWedding = weddingFacade.fetchWeddingByCreator(message.getFrom().getId()+"");
-            if (dbWedding != null) {
-             System.out.println("Found wedding..");
+                dbWedding = weddingFacade.fetchWeddingByCreator(message.getFrom().getId() + "");
+                if (dbWedding != null) {
+                    System.out.println("Found wedding..");
 
                     chatFacade.edit(dbChat);
                     if (message.hasLocation()) {
-                         
+
                         receivedLocation = message.getLocation();
                         dbWedding.setVenueLatitude(receivedLocation.getLatitude());
                         dbWedding.setVenueLongitude(receivedLocation.getLongitude());
@@ -373,14 +494,13 @@ public class ServiceBot extends TelegramLongPollingBot {
                     Thread.sleep(500);
                     sendMessage.setChatId(message.getChatId() + "");
                     sendMessage(sendMessage);
-                
+
+                }
 
             }
-
-        }
         } catch (Exception ex) {
-                    Logger.getLogger(ServiceBot.class.getName()).log(Level.SEVERE, null, ex);
-                }
+            Logger.getLogger(ServiceBot.class.getName()).log(Level.SEVERE, null, ex);
+        }
 
     }
 
@@ -456,9 +576,11 @@ public class ServiceBot extends TelegramLongPollingBot {
         sendMessageRequest.setChatId(message.getChatId() + "");
         try {
             newRsvp = new Rsvp();
+
             newRsvp.setFirstName(rsvpContact.getFirstName());
-            newRsvp.setFirstName(rsvpContact.getLastName());
+            newRsvp.setLastName(rsvpContact.getLastName());
             newRsvp.setTelNumber(rsvpContact.getPhoneNumber());
+
             dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
             dbWedding = weddingFacade.fetchByPublicCode(dbChat.getChatCode());
             if (rsvpFacade.fetchRSVPByPhone(rsvpContact.getPhoneNumber(), dbWedding.getId()) != null) {
@@ -471,6 +593,12 @@ public class ServiceBot extends TelegramLongPollingBot {
                     sendMessage(sendMessageRequest);
                 } else {
                     newRsvp.setWeddingID(dbWedding.getId());
+                    if (newRsvp.getFirstName() == null) {
+                        newRsvp.setFirstName(prop.getProperty("unknownres"));
+                    }
+                    if (newRsvp.getLastName() == null) {
+                        newRsvp.setLastName("~");
+                    }
                     rsvpFacade.create(newRsvp);
                     dbWedding.getWeddingRSVPs().add(newRsvp);
                     weddingFacade.edit(dbWedding);
@@ -486,6 +614,46 @@ public class ServiceBot extends TelegramLongPollingBot {
             }
         } catch (Exception ex) {
             ex.printStackTrace();
+        }
+
+    }
+
+    private void viewRsvpGuests(Message message) {
+        SendMessage sendMessageRequest = new SendMessage();
+        sendMessageRequest.setChatId(message.getChatId() + "");
+        SendContact contactToSend = new SendContact();
+        dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+        dbWedding = weddingFacade.fetchWeddingByCreator(message.getFrom().getId() + "");
+        String rsvpText = " Guests : " + dbWedding.getWeddingRSVPs().size();
+
+        try {
+            sendMessageRequest.setText(rsvpText);
+            sendMessage(sendMessageRequest);
+            if (dbWedding.getWeddingRSVPs().isEmpty()) {
+                sendMessageRequest.setText(prop.getProperty("norsvpguest"));
+                sendMessage(sendMessageRequest);
+            } else {
+                for (Rsvp gRsvp : dbWedding.getWeddingRSVPs()) {
+
+                    contactToSend.setChatId(message.getChatId() + "");
+                    contactToSend.setFirstName(gRsvp.getFirstName());
+                    contactToSend.setLastName(gRsvp.getLastName());
+                    contactToSend.setPhoneNumber(gRsvp.getTelNumber());
+                    sendContact(contactToSend);
+
+                }
+
+            }
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            try {
+
+                sendMessageRequest.setText(prop.getProperty("rsvpguestloaderr"));
+                sendMessage(sendMessageRequest);
+            } catch (Exception e) {
+
+            }
         }
 
     }
@@ -527,10 +695,11 @@ public class ServiceBot extends TelegramLongPollingBot {
             } else {
 
                 if (dbWedding.getVenue() != null && dbWedding.getReception() != null) {
-                    sendMessageRequest.setReplyToMessageId(message.getMessageId());
+                    //sendMessageRequest.setReplyToMessageId(message.getMessageId());
 
                     sendMessageRequest.setText(dbWedding.getCoupleName() + "'s" + " wedding will be held at '" + dbWedding.getVenue() + "' and the reception at '" + dbWedding.getReception() + "'");
                     sendMessage(sendMessageRequest);
+                    Thread.sleep(500);
                 }
 
                 if (dbWedding.getVenueLatitude() != 0) {
@@ -598,7 +767,7 @@ public class ServiceBot extends TelegramLongPollingBot {
                 sendMessageRequest.setText(prop.getProperty("photoreceived"));
                 sendMessage(sendMessageRequest);
 
-                sendMessageRequest = showOwnEditMenu(message);
+                sendMessageRequest = showOwnEditMenu(message, prop.getProperty("editwedding"));
                 sendMessageRequest.setChatId(message.getChatId() + "");
                 sendMessage(sendMessageRequest);
                 // fileFromSystem.delete();
@@ -957,22 +1126,7 @@ public class ServiceBot extends TelegramLongPollingBot {
 
                     sendMessage(sendMessage);
                 }
-//                else {
-//                    dbChat.setChatState(VENUEREG);
-//                    sendMessage.setText(prop.getProperty("congratsmsg") + dbWedding.getCoupleName() + " " + Emoji.THUMBS_UP_SIGN + " ");
-//                    sendMessage.setChatId(message.getChatId() + "");
-//                    sendMessage(sendMessage);
-//                    Thread.sleep(1000);
-//                    sendMessage.setText(" Your admin wedding code is >> " + dbWedding.getWeddingCode());
-//                    sendMessage.setChatId(message.getChatId() + "");
-//                    sendMessage(sendMessage);
-//                    sendMessage.setText(" Your public wedding code is >> " + dbWedding.getClientCode());
-//                    sendMessage.setChatId(message.getChatId() + "");
-//                    sendMessage(sendMessage);
-//                    //Request Venue
-//                    sendMessage.setText(prop.getProperty("venuemsg"));
-//                    sendMessage(sendMessage);
-//                }
+
             }
 
         } catch (Exception ex) {
@@ -1178,7 +1332,7 @@ public class ServiceBot extends TelegramLongPollingBot {
     private SendMessage requestContact(Message message, String text) throws TelegramApiException {
         SendMessage sendMessageRequest;
         sendMessageRequest = sendChooseOptionMessage(message.getChatId(), message.getMessageId(),
-                getMainContactRequestKeyBoard(text), Emoji.SMILING_FACE_WITH_SMILING_EYES + "");
+                getMainContactRequestKeyBoard(text), Emoji.SMILING_FACE_WITH_SMILING_EYES + " select button below to RSVP");
         //  dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
 
         return sendMessageRequest;
@@ -1216,13 +1370,14 @@ public class ServiceBot extends TelegramLongPollingBot {
 
     }
 
-    private SendMessage showOwnEditMenu(Message message) throws TelegramApiException {
+    private SendMessage showOwnEditMenu(Message message, String previousChat) throws TelegramApiException {
         SendMessage sendMessageRequest = sendChooseViewOwnWeddingOptionEditMessage(message.getChatId(), message.getMessageId(),
                 getViewOwnWeddingEditMenuKeyboard());
 
         dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
         if (dbChat != null) {
             dbChat.setChatState(EDITMODE);
+            dbChat.setChatPreviousStep(previousChat);
             chatFacade.edit(dbChat);
         } else {
             sendMessageRequest = showMainMenu(message);
@@ -1233,7 +1388,15 @@ public class ServiceBot extends TelegramLongPollingBot {
 
     private SendMessage showOwnWeddingMenu(Message message) throws TelegramApiException {
         SendMessage sendMessageRequest = sendChooseViewOwnWeddingOptionMessage(message.getChatId(), message.getMessageId(),
-                getViewOwnWeddingMenuKeyboard());;
+                getViewOwnWeddingMenuKeyboard());
+
+        dbChat = chatFacade.fetchChatByIdAndState(message.getChatId(), message.getFrom().getId());
+        if (dbChat != null) {
+            dbChat.setChatState(VIEWINGOWNWEDDINGREQ);
+            chatFacade.edit(dbChat);
+        } else {
+            chatFacade.create(new Chat(message.getChatId(), message.getFrom().getId(), MAINMENU));
+        }
 
         return sendMessageRequest;
     }
@@ -1284,6 +1447,7 @@ public class ServiceBot extends TelegramLongPollingBot {
     }
 
     private ReplyKeyboardMarkup getViewOwnWeddingEditMenuKeyboard() {
+        
         ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup();
         replyKeyboardMarkup.setSelective(true);
         replyKeyboardMarkup.setResizeKeyboard(true);
@@ -1292,17 +1456,18 @@ public class ServiceBot extends TelegramLongPollingBot {
         List<KeyboardRow> keyboard = new ArrayList<>();
         KeyboardRow keyboardFirstRow = new KeyboardRow();
         keyboardFirstRow.add(prop.getProperty("editcouplephoto"));
+        keyboardFirstRow.add(prop.getProperty("couplesnameedit"));
 
         KeyboardRow keyboardSecondRow = new KeyboardRow();
         keyboardSecondRow.add(prop.getProperty("editvenuereception"));
+        keyboardSecondRow.add(prop.getProperty("editweddingdate"));
 
-        KeyboardRow keyboardFourthRow = new KeyboardRow();
-        keyboardFourthRow.add(prop.getProperty("backtoviewweddingmenu"));
+        KeyboardRow keyboardThirdRow = new KeyboardRow();
+       keyboardThirdRow.add(prop.getProperty("backtoviewweddingmenu"));
 
         keyboard.add(keyboardFirstRow);
         keyboard.add(keyboardSecondRow);
-        // keyboard.add(keyboardThirdRow);
-        keyboard.add(keyboardFourthRow);
+        keyboard.add(keyboardThirdRow);
 
         replyKeyboardMarkup.setKeyboard(keyboard);
 
@@ -1325,6 +1490,7 @@ public class ServiceBot extends TelegramLongPollingBot {
         keyboardSecondRow.add(prop.getProperty("editwedding"));
 
         KeyboardRow keyboardFourthRow = new KeyboardRow();
+        keyboardFourthRow.add(prop.getProperty("rsvpguestsview"));
         keyboardFourthRow.add(prop.getProperty("backtoviewweddingmenu"));
 
         keyboard.add(keyboardFirstRow);

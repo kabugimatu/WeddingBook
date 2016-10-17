@@ -6,6 +6,7 @@
 package entities;
 
 import java.io.Serializable;
+import javax.persistence.Cacheable;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
@@ -18,6 +19,7 @@ import javax.persistence.NamedQuery;
  * @author kabugi
  */
 @Entity
+@Cacheable(false)
 @NamedQueries({
     @NamedQuery(name="checkRSVPPhone",query="SELECT dbrsvp FROM Rsvp dbrsvp WHERE dbrsvp.telNumber =:phone AND dbrsvp.weddingID =:Wid")
 })
