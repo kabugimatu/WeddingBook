@@ -10,8 +10,8 @@ package botconfig;
  * @author zkmatu
  */
 public class BotConfig {
-     public static final String BOT_USERNAME = "WeddingBookBot";
-    public static final String BOT_TOKEN = "261436918:AAGLZqjpWwR_9Xfgd_vLIeUuoFV5aZtNH1M";
+     public static final String BOT_USERNAME = "YourWeddingBotName";
+    public static final String BOT_TOKEN = "YourToken";
     
     
 }
